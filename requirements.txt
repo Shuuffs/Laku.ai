@@ -1,0 +1,6 @@
+Flask
+flask-cors
+psycopg2-binary
+python-dotenv
+google-genai
+forex-python==1.16
