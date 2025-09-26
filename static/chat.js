@@ -159,8 +159,10 @@ document.addEventListener('DOMContentLoaded', function() {
         addMessage(message, true);
         userInput.value = '';
         
-        // Show typing indicator
+        // Show typing indicator and disable input while processing
         showTypingIndicator();
+        userInput.disabled = true;
+        sendButton.disabled = true;
         
         try {
             const response = await fetch('/ai', {
@@ -171,40 +173,76 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({ user_text: message })
             });
             
-            const data = await response.json();
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
             
-            // Remove typing indicator
+            const data = await response.json();
+            console.log('Server response:', data); // Debug log
+            
+            // Hide typing indicator
             hideTypingIndicator();
             
+            // Add bot's response to chat
             if (data.ai_response) {
-                // Handle different types of responses based on action
-                switch(data.action) {
-                    case 'sale_added':
-                        addMessage(data.ai_response, false);
-                        break;
-                        
-                    case 'summary':
-                        if (data.summary) {
-                            let summaryText = data.ai_response + '\n\n';
-                            if (data.summary.total_revenue) 
-                                summaryText += `• Total Revenue: $${data.summary.total_revenue.toFixed(2)}\n`;
-                            if (data.summary.best_selling_item) 
-                                summaryText += `• Best Selling Item: ${data.summary.best_selling_item}\n`;
-                            if (data.summary.peak_hour) 
-                                summaryText += `• Peak Sales Hour: ${data.summary.peak_hour}`;
-                            addMessage(summaryText, false);
+                addMessage(data.ai_response, false);
+                
+                // Check if we need to refresh any data based on the action
+                console.log('Action received:', data.action); // Debug log
+                if (data.action) {
+                    // Refresh sales data if it's a sales-related action
+                    if (['add_sale', 'sale_added', 'remove_sale'].includes(data.action)) {
+                        console.log('Processing sales action:', data.action); // Debug log
+                        if (window.fetchSales) {
+                            console.log('Calling window.fetchSales()');
+                            try {
+                                await window.fetchSales();
+                                console.log('Sales data refreshed');
+                            } catch (e) {
+                                console.error('Error refreshing sales:', e);
+                            }
                         } else {
-                            addMessage(data.ai_response, false);
+                            console.warn('window.fetchSales is not defined');
                         }
-                        break;
                         
-                    case 'error':
-                        addMessage(`❌ ${data.ai_response}`, false);
-                        break;
-                        
-                    case 'chat':
-                    default:
-                        addMessage(data.ai_response, false);
+                        if (window.updateSummary) {
+                            console.log('Updating summary');
+                            window.updateSummary();
+                        }
+                        if (window.updateCharts) {
+                            console.log('Updating charts');
+                            window.updateCharts();
+                        }
+                    }
+                    
+                    // Refresh inventory if it's an inventory-related action
+                    if (['add_inventory', 'update_inventory', 'remove_inventory'].includes(data.action) && window.loadInventory) {
+                        await window.loadInventory();
+                        // Also update the item dropdown in the sales form
+                        if (window.fetchAndPopulateItems) {
+                            await window.fetchAndPopulateItems();
+                        }
+                    }
+                    
+                    // If we have a chart update function, call it
+                    if (window.updateInventoryChart) {
+                        window.updateInventoryChart();
+                    }
+                }
+                
+                // Handle summary data if present
+                if (data.summary) {
+                    let summaryText = '📊 Summary:\n';
+                    if (data.summary.total_revenue !== undefined) {
+                        summaryText += `• Total Revenue: $${data.summary.total_revenue.toFixed(2)}\n`;
+                    }
+                    if (data.summary.best_selling_item) {
+                        summaryText += `• Best Selling Item: ${data.summary.best_selling_item}\n`;
+                    }
+                    if (data.summary.peak_hour) {
+                        summaryText += `• Peak Sales Hour: ${data.summary.peak_hour}\n`;
+                    }
+                    addMessage(summaryText, false);
                 }
             } else {
                 addMessage("I'm sorry, I couldn't process your request. Please try again.", false);
@@ -213,6 +251,11 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error:', error);
             hideTypingIndicator();
             addMessage("I'm having trouble connecting to the server. Please try again later.", false);
+        } finally {
+            // Re-enable input
+            userInput.disabled = false;
+            sendButton.disabled = false;
+            userInput.focus();
         }
     }
     
@@ -238,6 +281,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Add welcome message
     setTimeout(() => {
-        addMessage("Hi there! I'm Hanni, your sales assistant. How can I help you today?", false);
+        addMessage("Hi there! I'm Laku, your sales assistant. How can I help you today?", false);
     }, 1000);
 });
